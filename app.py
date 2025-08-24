@@ -377,53 +377,7 @@ elif st.session_state.page == "verify":
 
 
 
-
-
-
-# 4) Render Google Fact Check results if any; otherwise show heuristic bias meter
-if claims:
-    st.success("Fact-Check Results Found:")
-    for claim in claims[:3]:
-        st.write("Claimed News:", claim.get("text", "N/A"))
-        st.write(
-            "Rating:",
-            claim.get("claimReview", [{}])[0].get("textualRating", "N/A")
-        )
-        st.write(
-            "Source:",
-            claim.get("claimReview", [{}])[0].get("publisher", {}).get("name", "N/A")
-        )
-        url = claim.get("claimReview", [{}])[0].get("url")
-    if url:
-        st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
-        st.write("---")
-
-elif headline.strip():
-    # Heuristic bias analysis as the final fallback/extra context
-    signals, raw_score = bias_signals(headline)
-    bias_pct = bias_percentage_from_score(raw_score)
-
-    with st.container():
-        st.info("No official fact-check found yet.")
-        st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check.")
-        
-    col_left, col_right = st.columns([0.6, 0.4])
-    with col_left:
-        st.write(f"Likely bias: {bias_pct}%")
-    with col_right:
-        if signals:
-            st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
-        else:
-            st.caption("No notable bias signals detected.")
-    st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
-    
-
-
-
-
-
-
-
+    # 4) Render Google Fact Check results if any; otherwise show message and heuristic bias meter
     if claims:
         st.success("Fact-Check Results Found:")
         for claim in claims[:3]:
@@ -440,7 +394,27 @@ elif headline.strip():
             if url:
                 st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
             st.write("---")
-    elif headline:
-        st.info(    
-            "New or breaking news may not be fact-checked immediately."
-        )
+
+    elif headline.strip():
+        # Show info message first
+        st.info("""📋 No official fact-check results found.
+
+New or breaking news may not be fact-checked immediately by major fact-checking organizations.""")
+
+        
+        # Then show heuristic bias analysis at the bottom
+        signals, raw_score = bias_signals(headline)
+        bias_pct = bias_percentage_from_score(raw_score)
+
+        with st.container():
+            st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check.")
+            
+        col_left, col_right = st.columns([0.6, 0.4])
+        with col_left:
+            st.write(f"Likely bias: {bias_pct}%")
+        with col_right:
+            if signals:
+                st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
+            else:
+                st.caption("No notable bias signals detected.")
+        st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
