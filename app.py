@@ -11,6 +11,10 @@ from datetime import datetime, timedelta
 
 
 PERSPECTIVE_API_KEY = "AIzaSyAkSTA_XwWCk57kzmQsHe2HAi3TtOrrCZQ"  # TODO: paste your key here for now (later move to st.secrets["PERSPECTIVE_API_KEY"])
+# Image verification API keys
+HUGGING_FACE_TOKEN = "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"
+SERPAPI_KEY = "32f2653b5f3e1544d9cd3ecfa2e3b63bcf24702f683b987c711ce4e46dcc1db4"
+GOOGLE_VISION_API_KEY = "AIzaSyB9G4Xc4Hvnk7eW_oDGc3O1LyiNtds_6ww"
 
 
 
@@ -227,6 +231,87 @@ def gdelt_search_simple(query: str, max_items: int = 3, hours_back: int = 72) ->
 
 
 
+
+
+
+def detect_deepfake_hf(image_bytes, hf_token):
+    """
+    Uses Hugging Face to detect if image is AI-generated/deepfake
+    """
+    API_URL = "https://api-inference.huggingface.co/models/dima806/deepfake_vs_real_image_detection"
+    headers = {"Authorization": f"Bearer {hf_token}"}
+    
+    try:
+        response = requests.post(API_URL, headers=headers, data=image_bytes)
+        if response.status_code == 200:
+            result = response.json()
+            return result
+        else:
+            return {"_error": f"API Error: {response.status_code}"}
+    except Exception as e:
+        return {"_error": f"Request failed: {str(e)}"}
+
+def reverse_image_search_serp(image_file, api_key):
+    """
+    Uses SerpAPI for Google reverse image search
+    """
+    try:
+        # Convert image to base64
+        image_data = base64.b64encode(image_file.read()).decode()
+        
+        url = "https://serpapi.com/search"
+        params = {
+            "engine": "google_reverse_image",
+            "image_url": f"data:image/jpeg;base64,{image_data}",
+            "api_key": api_key
+        }
+        
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"_error": f"SerpAPI Error: {response.status_code}"}
+    except Exception as e:
+        return {"_error": f"Reverse search failed: {str(e)}"}
+
+def extract_text_google_vision(image_bytes, api_key):
+    """
+    Uses Google Vision API to extract text from image
+    """
+    import base64
+    
+    try:
+        # Encode image
+        image_b64 = base64.b64encode(image_bytes).decode()
+        
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+        
+        payload = {
+            "requests": [{
+                "image": {"content": image_b64},
+                "features": [
+                    {"type": "TEXT_DETECTION"},
+                    {"type": "OBJECT_LOCALIZATION"}
+                ]
+            }]
+        }
+        
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {"_error": f"Vision API Error: {response.status_code}"}
+    except Exception as e:
+        return {"_error": f"Text extraction failed: {str(e)}"}
+
+
+
+
+
+
+
+
+
 #################
 # Streamlit App #
 #################
@@ -243,7 +328,10 @@ if "page" not in st.session_state:
 col1, col2 = st.columns([4, 1])
 with col1:
 
-    st.title("Taste Truth ☄️ \n### A Fact-Checking Tool")
+    st.title("Taste The Truth ☄️")
+    st.subheader("A Fact-Checking Tool")
+
+    
 
 
 
@@ -263,7 +351,7 @@ st.markdown(
     "<p style='font-size: 12px; color: grey;'>By Abhiraj, Suryansh, Abhishek, Nikunj and Abhimanyu</p>",
     unsafe_allow_html=True
 )
-
+st.divider()
 
 st.write("AI-powered verifier that aggregates fact-checks, checks broader media coverage, and highlights rhetorical patterns that may indicate bias.")
 
@@ -299,132 +387,166 @@ if st.session_state.page == "news":
 
 
 
-
 elif st.session_state.page == "verify":
-    st.header("2. Verify Information, Evaluate a text")
-
-
-    headline = st.text_input("Enter the text/info you want to verify:")
-    claims = []
-
-
-
-
-    # 3) Google Fact Check API — on button click (authoritative fact-checks)
-    if st.button("Check"):
-        if not headline.strip():
-            st.warning("Please enter a valid news headline.")
-        else:
-            fact_check_url = (
-                "https://factchecktools.googleapis.com/v1alpha1/claims:search"
-                f"?query={requests.utils.quote(headline)}&key={fact_check_api_key}"
-            )
-            # Use safe_get_json for friendly errors
-            result = safe_get_json(fact_check_url, timeout=12)
-            if isinstance(result, dict) and "_error" in result:
-                kind = result.get("_kind")
-                if kind == "offline":
-                    st.error("Network not connected. Please check your internet connection and try again.")
-                elif kind == "timeout":
-                    st.error("The fact-check request timed out. Please try again.")
-                elif kind == "http":
-                    st.error(result["_error"])
-                else:
-                    st.error("Unable to fetch fact-checks right now. Please try again later.")
+    st.header("2. Verify Information")
+    
+    # Create two tabs for text and image verification
+    tab1, tab2 = st.tabs(["📝 Text Verification", "📸 Image Verification"])
+    
+    with tab1:
+        st.subheader("Evaluate Text Information")
+        headline = st.text_input("Enter the text/info you want to verify:")
+        claims = []
+        
+        # 3) Google Fact Check API — on button click (authoritative fact-checks)
+        if st.button("Check", key="text_check_btn"):
+            if not headline.strip():
+                st.warning("Please enter a valid news headline.")
             else:
-                claims = result.get("claims", []) if isinstance(result, dict) else []
+                fact_check_url = (
+                    "https://factchecktools.googleapis.com/v1alpha1/claims:search"
+                    f"?query={requests.utils.quote(headline)}&key={fact_check_api_key}"
+                )
+                result = safe_get_json(fact_check_url, timeout=12)
+                if isinstance(result, dict) and "_error" in result:
+                    kind = result.get("_kind")
+                    if kind == "offline":
+                        st.error("Network not connected. Please check your internet connection and try again.")
+                    elif kind == "timeout":
+                        st.error("The fact-check request timed out. Please try again.")
+                    elif kind == "http":
+                        st.error(result["_error"])
+                    elif kind == "other":
+                        st.error("Unable to fetch fact-checks right now. Please try again later.")
+                else:
+                    claims = result.get("claims", []) if isinstance(result, dict) else []
 
+        # 1) Perspective API (style/toxicity) — show immediately when text present
+        st.divider()
+        if headline.strip():
+            persp = perspective_analyze(headline, PERSPECTIVE_API_KEY, lang="en")
+            if "_error" in persp:
+                st.caption("Perspective signal: unavailable")
+            else:
+                parts = []
+                if isinstance(persp.get("TOXICITY"), int):
+                    parts.append(f"Toxicity: {persp['TOXICITY']}%")
+                if isinstance(persp.get("INSULT"), int):
+                    parts.append(f"Insult: {persp['INSULT']}%")
+                if parts:
+                    st.caption("👀Signal Style: " + " | ".join(parts) + " — its not a absolute truth/bias measure")
+                    st.divider()
 
+        # 2) Recent coverage using Google News
+        if headline.strip():
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            status_text.text("🔍 Searching news databases...")
+            progress_bar.progress(50)
+            import time
+            time.sleep(0.5)
+            
+            status_text.text("📰 Analyzing coverage...")
+            progress_bar.progress(100)
+            time.sleep(0.5)
+            
+            progress_bar.empty()
+            status_text.empty()
+            
+            google_news_url = f"https://news.google.com/search?q={quote_plus(headline)}"
+            st.success(f"✅ Coverage analysis complete! [↗️]({google_news_url})")
+            st.divider()
 
+        # 4) Render Google Fact Check results if any; otherwise show message and heuristic bias meter
+        if claims:
+            st.success("Fact-Check Results Found:")
+            for claim in claims[:3]:
+                st.write("Claimed News:", claim.get("text", "N/A"))
+                st.write("Rating:", claim.get("claimReview", [{}])[0].get("textualRating", "N/A"))
+                st.write("Source:", claim.get("claimReview", [{}])[0].get("publisher", {}).get("name", "N/A"))
+                url = claim.get("claimReview", [{}])[0].get("url")
+                if url:
+                    st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
+                st.divider()
 
-
-    # 1) Perspective API (style/toxicity) — show immediately when text present
-    st.divider()
-    if headline.strip():
-        persp = perspective_analyze(headline, PERSPECTIVE_API_KEY, lang="en")
-        if "_error" in persp:
-            st.caption("Perspective signal: unavailable")
-        else:
-            parts = []
-            if isinstance(persp.get("TOXICITY"), int):
-                parts.append(f"Toxicity: {persp['TOXICITY']}%")
-            if isinstance(persp.get("INSULT"), int):
-                parts.append(f"Insult: {persp['INSULT']}%")
-            if parts:
-                st.caption("👀Signal Style: " + " | ".join(parts) + " — its not a absolute truth/bias measure")
-                st.divider()  # Add spacing after Perspective API
-
-
-
-
-
-# 2) Recent coverage using Google News
-    if headline.strip():
-        # Show checking process
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        status_text.text("🔍 Searching news databases...")
-        progress_bar.progress(50)
-        import time
-        time.sleep(0.5)
-        
-        status_text.text("📰 Analyzing coverage...")
-        progress_bar.progress(100)
-        time.sleep(0.5)
-        
-        # Clear progress and show results
-        progress_bar.empty()
-        status_text.empty()
-        
-        google_news_url = f"https://news.google.com/search?q={quote_plus(headline)}"
-        
-        # Success message with bigger clickable arrow inside the box
-        st.success(f"✅ Coverage analysis complete! [↗️]({google_news_url})")
-        st.divider()  # Add spacing after Google News
-
-
-
-    # 4) Render Google Fact Check results if any; otherwise show message and heuristic bias meter
-    if claims:
-        st.success("Fact-Check Results Found:")
-        for claim in claims[:3]:
-            st.write("Claimed News:", claim.get("text", "N/A"))
-            st.write(
-                "Rating:",
-                claim.get("claimReview", [{}])[0].get("textualRating", "N/A")
-            )
-            st.write(
-                "Source:",
-                claim.get("claimReview", [{}])[0].get("publisher", {}).get("name", "N/A")
-            )
-            url = claim.get("claimReview", [{}])[0].get("url")
-            if url:
-                st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
-            st.divider()  # Better spacing between claims
-
-    elif headline.strip():
-        # Show info message first
-        st.write("")  # Add space before info message
-        st.info("""📋 No official fact-check results found.
+        elif headline.strip():
+            st.write("")
+            st.info("""📋 No official fact-check results found.
 
 New or breaking news may not be fact-checked immediately by major fact-checking organizations.""")
-
-        
-        # Then show heuristic bias analysis at the bottom
-        st.divider()
-        signals, raw_score = bias_signals(headline)
-        bias_pct = bias_percentage_from_score(raw_score)
-
-        with st.container():
-            st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check and might not be accurate.")
             
-        col_left, col_right = st.columns([0.6, 0.4])
-        with col_left:
-            st.write(f"Likely bias: {bias_pct}%")
-        with col_right:
-            if signals:
-                st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
-            else:
-                st.caption("No notable bias signals detected.")
-        st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
+            st.divider()
+            signals, raw_score = bias_signals(headline)
+            bias_pct = bias_percentage_from_score(raw_score)
+
+            with st.container():
+                st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check and might not be accurate.")
+                
+            col_left, col_right = st.columns([0.6, 0.4])
+            with col_left:
+                st.write(f"Likely bias: {bias_pct}%")
+            with col_right:
+                if signals:
+                    st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
+                else:
+                    st.caption("No notable bias signals detected.")
+            st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
+
+    
+    with tab2:
+        st.subheader("Verify Image Authenticity")
+        uploaded_image = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+
+        if uploaded_image is not None:
+            # Display the uploaded image
+            st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
+            
+            # Get image bytes
+            image_bytes = uploaded_image.getvalue()
+            
+            # Three verification options
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("🔍 Reverse Search", key="reverse_search_btn"):  # ✅ Added unique key
+                    with st.spinner("Searching for image sources..."):
+                        serp_result = reverse_image_search_serp(uploaded_image, SERPAPI_KEY)
+                        if "_error" in serp_result:
+                            st.error(serp_result["_error"])
+                        else:
+                            matches = serp_result.get("image_results", [])[:3]
+                            if matches:
+                                st.success("Similar images found:")
+                                for match in matches:
+                                    st.write(f"- {match.get('title', 'Unknown')} [{match.get('source', 'Unknown')}]")
+                            else:
+                                st.info("No similar images found")
+            
+            with col2:
+                if st.button("🤖 Deepfake Check", key="deepfake_check_btn"):  # ✅ Added unique key
+                    with st.spinner("Analyzing for AI generation..."):
+                        hf_result = detect_deepfake_hf(image_bytes, HUGGING_FACE_TOKEN)
+                        if "_error" in hf_result:
+                            st.error(hf_result["_error"])
+                        else:
+                            st.success("Analysis complete:")
+                            st.write(hf_result)
+            
+            with col3:
+                if st.button("📝 Extract Text", key="extract_text_btn"):  # ✅ Added unique key
+                    with st.spinner("Extracting text content..."):
+                        vision_result = extract_text_google_vision(image_bytes, GOOGLE_VISION_API_KEY)
+                        if "_error" in vision_result:
+                            st.error(vision_result["_error"])
+                        else:
+                            text_annotations = vision_result.get("responses", [{}])[0].get("textAnnotations", [])
+                            if text_annotations:
+                                extracted_text = text_annotations[0].get("description", "")
+                                st.success("Text extracted:")
+                                st.text_area("Extracted Text:", extracted_text, height=100)
+                                if st.button("Fact-Check Extracted Text", key="factcheck_extracted_btn"):  # ✅ Added unique key
+                                    headline = extracted_text  # Use extracted text for fact-checking
+                            else:
+                                st.info("No text found in image")
+
