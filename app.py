@@ -374,7 +374,13 @@ elif st.session_state.page == "verify":
     
     with tab1:
         st.subheader("Evaluate Text Information")
-        headline = st.text_input("Enter the text/info you want to verify:")
+        headline = st.text_area(
+    "",                          # empty label hides the text above
+    height=200,
+    placeholder="Type or paste your text here…"
+)
+
+
         claims = []
         
         # 3) Google Fact Check API — on button click (authoritative fact-checks)
@@ -472,7 +478,8 @@ New or breaking news may not be fact-checked immediately by major fact-checking 
                     st.caption("No notable bias signals detected.")
             st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
 
-    
+
+
     with tab2:
         st.subheader("Verify Image Authenticity")
         uploaded_image = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -483,15 +490,10 @@ New or breaking news may not be fact-checked immediately by major fact-checking 
 
             # Get image bytes
             image_bytes = uploaded_image.getvalue()
-            
-            
 
+            # Extract Text button
             col1, = st.columns(1)
-            
-with col1:
-    if st.button("📝 Extract Text", key="extract_text_btn"):
-        with st.spinner("Opening OCR tool..."):
-            # Direct link to OCR website
-            st.success("Visit [Free OCR Tool](https://www.onlineocr.net/)")
-
-                       
+            with col1:
+                if st.button("📝 Extract Text", key="extract_text_btn"):
+                    with st.spinner("Opening OCR tool..."):
+                        st.success("Visit [Free OCR Tool](https://www.onlineocr.net/)")
