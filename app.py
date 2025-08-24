@@ -7,12 +7,12 @@ from typing import Dict, Any, List, Tuple
 import json
 from urllib.parse import quote_plus
 from datetime import datetime, timedelta
-
-
+import base64
+import io 
 
 PERSPECTIVE_API_KEY = "AIzaSyAkSTA_XwWCk57kzmQsHe2HAi3TtOrrCZQ"  # TODO: paste your key here for now (later move to st.secrets["PERSPECTIVE_API_KEY"])
 # Image verification API keys
-HUGGING_FACE_TOKEN = "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"
+HUGGING_FACE_TOKEN = "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"
 SERPAPI_KEY = "32f2653b5f3e1544d9cd3ecfa2e3b63bcf24702f683b987c711ce4e46dcc1db4"
 GOOGLE_VISION_API_KEY = "AIzaSyB9G4Xc4Hvnk7eW_oDGc3O1LyiNtds_6ww"
 
@@ -234,75 +234,54 @@ def gdelt_search_simple(query: str, max_items: int = 3, hours_back: int = 72) ->
 
 
 
-def detect_deepfake_hf(image_bytes, hf_token):
-    """
-    Uses Hugging Face to detect if image is AI-generated/deepfake
-    """
-    API_URL = "https://api-inference.huggingface.co/models/dima806/deepfake_vs_real_image_detection"
-    headers = {"Authorization": f"Bearer {hf_token}"}
-    
-    try:
-        response = requests.post(API_URL, headers=headers, data=image_bytes)
-        if response.status_code == 200:
-            result = response.json()
-            return result
-        else:
-            return {"_error": f"API Error: {response.status_code}"}
-    except Exception as e:
-        return {"_error": f"Request failed: {str(e)}"}
-
-def reverse_image_search_serp(image_file, api_key):
-    """
-    Uses SerpAPI for Google reverse image search
-    """
-    try:
-        # Convert image to base64
-        image_data = base64.b64encode(image_file.read()).decode()
-        
-        url = "https://serpapi.com/search"
-        params = {
-            "engine": "google_reverse_image",
-            "image_url": f"data:image/jpeg;base64,{image_data}",
-            "api_key": api_key
-        }
-        
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"_error": f"SerpAPI Error: {response.status_code}"}
-    except Exception as e:
-        return {"_error": f"Reverse search failed: {str(e)}"}
 
 def extract_text_google_vision(image_bytes, api_key):
     """
-    Uses Google Vision API to extract text from image
+    Streamlined OCR process with automatic download and redirect
     """
-    import base64
-    
     try:
-        # Encode image
-        image_b64 = base64.b64encode(image_bytes).decode()
+        import io
         
-        url = f"https://vision.googleapis.com/v1/images:annotate?key={api_key}"
+        # Create download button for the image
+        img_buffer = io.BytesIO(image_bytes)
         
-        payload = {
-            "requests": [{
-                "image": {"content": image_b64},
-                "features": [
-                    {"type": "TEXT_DETECTION"},
-                    {"type": "OBJECT_LOCALIZATION"}
-                ]
-            }]
-        }
+        col_a, col_b = st.columns(2)
         
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            return response.json()
+        with col_a:
+            # Download button for the image
+            st.download_button(
+                label="⬇️ Download Image",
+                data=image_bytes,
+                file_name="image_to_extract.jpg",
+                mime="image/jpeg"
+            )
+        
+        with col_b:
+            # Direct link to OCR service
+            st.link_button(
+                label="🔗 Open Free OCR Tool", 
+                url="https://www.onlineocr.net/"
+            )
+        
+        st.success("✅ **Quick Steps:** 1) Click 'Download Image' 2) Click 'Open OCR Tool' 3) Upload the downloaded image")
+        
+        # Manual text input as backup
+        st.markdown("---")
+        st.markdown("**Or enter extracted text manually:**")
+        manual_text = st.text_area("Paste or type the text from the image:", height=100, key="manual_ocr_input")
+        
+        if manual_text.strip():
+            return {
+                "responses": [{
+                    "textAnnotations": [{"description": manual_text}]
+                }]
+            }
         else:
-            return {"_error": f"Vision API Error: {response.status_code}"}
+            return {"responses": [{"textAnnotations": []}]}
+            
     except Exception as e:
-        return {"_error": f"Text extraction failed: {str(e)}"}
+        return {"_error": f"Error: {str(e)}"}
+
 
 
 
@@ -500,53 +479,19 @@ New or breaking news may not be fact-checked immediately by major fact-checking 
 
         if uploaded_image is not None:
             # Display the uploaded image
-            st.image(uploaded_image, caption="Uploaded Image", use_column_width=True)
-            
+            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+
             # Get image bytes
             image_bytes = uploaded_image.getvalue()
             
-            # Three verification options
-            col1, col2, col3 = st.columns(3)
             
-            with col1:
-                if st.button("🔍 Reverse Search", key="reverse_search_btn"):  # ✅ Added unique key
-                    with st.spinner("Searching for image sources..."):
-                        serp_result = reverse_image_search_serp(uploaded_image, SERPAPI_KEY)
-                        if "_error" in serp_result:
-                            st.error(serp_result["_error"])
-                        else:
-                            matches = serp_result.get("image_results", [])[:3]
-                            if matches:
-                                st.success("Similar images found:")
-                                for match in matches:
-                                    st.write(f"- {match.get('title', 'Unknown')} [{match.get('source', 'Unknown')}]")
-                            else:
-                                st.info("No similar images found")
-            
-            with col2:
-                if st.button("🤖 Deepfake Check", key="deepfake_check_btn"):  # ✅ Added unique key
-                    with st.spinner("Analyzing for AI generation..."):
-                        hf_result = detect_deepfake_hf(image_bytes, HUGGING_FACE_TOKEN)
-                        if "_error" in hf_result:
-                            st.error(hf_result["_error"])
-                        else:
-                            st.success("Analysis complete:")
-                            st.write(hf_result)
-            
-            with col3:
-                if st.button("📝 Extract Text", key="extract_text_btn"):  # ✅ Added unique key
-                    with st.spinner("Extracting text content..."):
-                        vision_result = extract_text_google_vision(image_bytes, GOOGLE_VISION_API_KEY)
-                        if "_error" in vision_result:
-                            st.error(vision_result["_error"])
-                        else:
-                            text_annotations = vision_result.get("responses", [{}])[0].get("textAnnotations", [])
-                            if text_annotations:
-                                extracted_text = text_annotations[0].get("description", "")
-                                st.success("Text extracted:")
-                                st.text_area("Extracted Text:", extracted_text, height=100)
-                                if st.button("Fact-Check Extracted Text", key="factcheck_extracted_btn"):  # ✅ Added unique key
-                                    headline = extracted_text  # Use extracted text for fact-checking
-                            else:
-                                st.info("No text found in image")
 
+            col1, = st.columns(1)
+            
+with col1:
+    if st.button("📝 Extract Text", key="extract_text_btn"):
+        with st.spinner("Opening OCR tool..."):
+            # Direct link to OCR website
+            st.success("Visit [Free OCR Tool](https://www.onlineocr.net/)")
+
+                       
