@@ -242,7 +242,11 @@ if "page" not in st.session_state:
 # Top bar navigation (before title)
 col1, col2 = st.columns([4, 1])
 with col1:
-    st.title("Taste Truth ☄️ - A Fact-Checking Tool")
+
+    st.title("Taste Truth ☄️ \n### A Fact-Checking Tool")
+
+
+
 with col2:
     if st.session_state.page == "news":
         if st.button("🔍 Verify Info", key="nav_verify"):
@@ -335,6 +339,7 @@ elif st.session_state.page == "verify":
 
 
     # 1) Perspective API (style/toxicity) — show immediately when text present
+    st.divider()
     if headline.strip():
         persp = perspective_analyze(headline, PERSPECTIVE_API_KEY, lang="en")
         if "_error" in persp:
@@ -346,7 +351,9 @@ elif st.session_state.page == "verify":
             if isinstance(persp.get("INSULT"), int):
                 parts.append(f"Insult: {persp['INSULT']}%")
             if parts:
-                st.caption("Signal Style: " + " | ".join(parts) + " — its not a absolute truth/bias measure")
+                st.caption("👀Signal Style: " + " | ".join(parts) + " — its not a absolute truth/bias measure")
+                st.divider()  # Add spacing after Perspective API
+
 
 
 
@@ -374,6 +381,7 @@ elif st.session_state.page == "verify":
         
         # Success message with bigger clickable arrow inside the box
         st.success(f"✅ Coverage analysis complete! [↗️]({google_news_url})")
+        st.divider()  # Add spacing after Google News
 
 
 
@@ -393,21 +401,23 @@ elif st.session_state.page == "verify":
             url = claim.get("claimReview", [{}])[0].get("url")
             if url:
                 st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
-            st.write("---")
+            st.divider()  # Better spacing between claims
 
     elif headline.strip():
         # Show info message first
+        st.write("")  # Add space before info message
         st.info("""📋 No official fact-check results found.
 
 New or breaking news may not be fact-checked immediately by major fact-checking organizations.""")
 
         
         # Then show heuristic bias analysis at the bottom
+        st.divider()
         signals, raw_score = bias_signals(headline)
         bias_pct = bias_percentage_from_score(raw_score)
 
         with st.container():
-            st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check.")
+            st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check and might not be accurate.")
             
         col_left, col_right = st.columns([0.6, 0.4])
         with col_left:
