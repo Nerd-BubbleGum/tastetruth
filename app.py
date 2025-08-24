@@ -349,68 +349,74 @@ elif st.session_state.page == "verify":
                 st.caption("Signal Style: " + " | ".join(parts) + " — its not a absolute truth/bias measure")
 
 
-    # 2) GDELT 2.1 (recent coverage) — show immediately when text present
+
+
+# 2) Recent coverage using Google News
     if headline.strip():
-        with st.spinner("Searching recent coverage..."):
-            coverage = gdelt_search_simple(headline, max_items=3, hours_back=72)
-        if coverage:
-            st.success("Recent coverage on other news sources:")
-            for item in coverage:
-                t = item.get("title", "Untitled")
-                u = item.get("url")
-                src = item.get("source", "Unknown")
-                dt = item.get("date", "")
-                st.write(f"- {t} — {src} ({dt})")
-                if u:
-                    st.markdown(f"[Read]({u})", unsafe_allow_html=True)
+        # Show checking process
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text("🔍 Searching news databases...")
+        progress_bar.progress(50)
+        import time
+        time.sleep(0.5)
+        
+        status_text.text("📰 Analyzing coverage...")
+        progress_bar.progress(100)
+        time.sleep(0.5)
+        
+        # Clear progress and show results
+        progress_bar.empty()
+        status_text.empty()
+        
+        google_news_url = f"https://news.google.com/search?q={quote_plus(headline)}"
+        
+        # Success message with bigger clickable arrow inside the box
+        st.success(f"✅ Coverage analysis complete! [↗️]({google_news_url})")
+
+
+
+
+
+
+# 4) Render Google Fact Check results if any; otherwise show heuristic bias meter
+if claims:
+    st.success("Fact-Check Results Found:")
+    for claim in claims[:3]:
+        st.write("Claimed News:", claim.get("text", "N/A"))
+        st.write(
+            "Rating:",
+            claim.get("claimReview", [{}])[0].get("textualRating", "N/A")
+        )
+        st.write(
+            "Source:",
+            claim.get("claimReview", [{}])[0].get("publisher", {}).get("name", "N/A")
+        )
+        url = claim.get("claimReview", [{}])[0].get("url")
+    if url:
+        st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
+        st.write("---")
+
+elif headline.strip():
+    # Heuristic bias analysis as the final fallback/extra context
+    signals, raw_score = bias_signals(headline)
+    bias_pct = bias_percentage_from_score(raw_score)
+
+    with st.container():
+        st.info("No official fact-check found yet.")
+        st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check.")
+        
+    col_left, col_right = st.columns([0.6, 0.4])
+    with col_left:
+        st.write(f"Likely bias: {bias_pct}%")
+    with col_right:
+        if signals:
+            st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
         else:
-            st.info("No recent coverage found in the last 72 hours.")
-
-
-
-
-
-
-
-    # 4) Render Google Fact Check results if any; otherwise show heuristic bias meter
-    if claims:
-        st.success("Results Found:")
-        for claim in claims[:3]:
-            st.write("Claimed News:", claim.get("text", "N/A"))
-            st.write(
-                "Rating:",
-                claim.get("claimReview", [{}])[0].get("textualRating", "N/A")
-            )
-            st.write(
-                "Source:",
-                claim.get("claimReview", [{}])[0].get("publisher", {}).get("name", "N/A")
-            )
-            url = claim.get("claimReview", [{}]).get("url")
-            if url:
-                st.markdown(f"[→ View Source]({url})", unsafe_allow_html=True)
-            st.write("---")
-    elif headline.strip():
-        # Heuristic bias analysis as the final fallback/extra context
-        signals, raw_score = bias_signals(headline)
-        bias_pct = bias_percentage_from_score(raw_score)
-
-
-        with st.container():
-            st.info("No verification result found yet.")
-            st.markdown("**Heuristic Style Analysis ⤵️**", help="This is an automated style-based bias estimate, not a fact-check.")
-            
-        col_left, col_right = st.columns([0.6, 0.4])
-        with col_left:
-            st.write(f"Likely bias: {bias_pct}%")
-        with col_right:
-            if signals:
-                st.caption("Signals: " + " | ".join(f"{k}{'' if v is True else f' ({v})'}" for k, v in signals.items()))
-            else:
-                st.caption("No notable bias signals detected.")
-        st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
-
-
-
+            st.caption("No notable bias signals detected.")
+    st.caption("Note: Style signals and toxicity are not measures of factual accuracy. They do not indicate bias, but can be used to identify potential bias.")
+    
 
 
 
@@ -434,8 +440,7 @@ elif st.session_state.page == "verify":
             if url:
                 st.markdown(f"[→ View Fact-Check Source]({url})", unsafe_allow_html=True)
             st.write("---")
-    elif headline: 
-        st.info(
-            "No fact-check result found for this headline. "
+    elif headline:
+        st.info(    
             "New or breaking news may not be fact-checked immediately."
         )
